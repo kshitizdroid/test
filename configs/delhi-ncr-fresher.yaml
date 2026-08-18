@@ -1,0 +1,75 @@
+# =============================================================================
+# li-reach spec — Delhi NCR fresher roles (Product / Founder's Office / AI)
+# =============================================================================
+# Run:  python -m li_reach --config configs/delhi-ncr-fresher.yaml
+# (requires the one-time LinkedIn MCP setup — see README)
+# =============================================================================
+
+searches:
+  # 1) Product roles — Delhi NCR / Gurugram — fresher
+  - keywords: "Associate Product Manager"
+    location: "Gurugram, India"
+  - keywords: "Product Analyst"
+    location: "Delhi, India"
+  - keywords: "Product Manager"
+    location: "Gurugram, India"
+
+  # 2) Founder's Office — Delhi NCR / Gurugram / Noida — fresher (0–6 months)
+  - keywords: "Founder's Office"
+    location: "Delhi, India"
+  - keywords: "Chief of Staff"
+    location: "Gurugram, India"
+  - keywords: "Founder's Office"
+    location: "Noida, India"
+
+  # 3) AI Generalist — Delhi NCR / Gurugram / Noida — fresher (0–6 months)
+  - keywords: "AI Generalist"
+    location: "Delhi, India"
+  - keywords: "AI Generalist"
+    location: "Gurugram, India"
+  - keywords: "AI Generalist"
+    location: "Noida, India"
+
+filters:
+  date_posted: past_week           # "posted last week"
+  experience_level: [internship, entry]   # fresher / 0–6 months
+  sort_by: date
+  max_pages: 3
+
+# Keep only fresher-friendly listings; drop senior/experienced ones.
+include_keywords: []               # leave empty = keep all that pass filters
+exclude_keywords:
+  - "senior"
+  - "lead"
+  - "5+ years"
+  - "3+ years"
+  - "manager, 4"
+exclude_companies: []
+
+# "We're hiring" founder posts — very common for these role types.
+hiring_posts:
+  enabled: true
+  phrases:
+    - "we're hiring"
+    - "hiring"
+    - "join our team"
+    - "founder's office"
+    - "chief of staff"
+    - "AI generalist"
+  date_posted: past-week
+  max_pages: 2
+  require_role_match: true
+
+ranking:
+  keyword_weight: 3
+  title_match_weight: 5
+  recency_weight: 3               # freshness matters most for "last week"
+
+enrichment:
+  enabled: true
+  top: 25
+
+output:
+  formats: [markdown, json]
+  dir: ./out
+  top: 60

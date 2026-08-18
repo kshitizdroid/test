@@ -1,0 +1,9 @@
+# li-reach
+config.yaml          # your personal spec — keep private
+out/                 # generated results
+*.pyc
+__pycache__/
+.venv/
+venv/
+.pytest_cache/
+.DS_Store

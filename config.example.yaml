@@ -1,0 +1,73 @@
+# =============================================================================
+# li-reach — your LinkedIn search specification
+# =============================================================================
+# Copy this to `config.yaml` and edit it to match what you're looking for.
+# Everything here is YOUR spec; li-reach pushes it down into LinkedIn's native
+# search filters where possible, then filters/ranks the results on top.
+#
+#   cp config.example.yaml config.yaml
+#   python -m li_reach            # run it
+#   python -m li_reach --dry-run  # just print the commands it would run
+# =============================================================================
+
+# One or more searches. Each becomes a `linkedin.search_jobs` call.
+searches:
+  - keywords: "software engineer"
+    location: "India"
+  - keywords: "python backend developer"
+    location: "Remote"
+
+# Native LinkedIn filters — accurate and cheap because LinkedIn applies them
+# server-side. Leave a field out to not filter on it.
+filters:
+  # past_hour | past_24_hours | past_week | past_month
+  date_posted: past_week
+  # internship | entry | associate | mid_senior | director | executive
+  experience_level: [entry, associate, mid_senior]
+  # full_time | part_time | contract | temporary | internship | volunteer | other
+  job_type: [full_time]
+  # on_site | remote | hybrid
+  work_type: [remote, hybrid]
+  easy_apply: false
+  sort_by: date          # date | relevance
+  max_pages: 3           # 1–10; how deep each search scrolls
+
+# Fine-grained post-filters, applied to the job text after fetching.
+# (For these to bite, enrichment must fetch each job's details — see below.)
+include_keywords: [python, backend, api]   # keep jobs mentioning at least one
+exclude_keywords: [sales, unpaid, clearance, "commission only"]
+exclude_companies: ["Some Staffing Co", "Recruiter Agency LLC"]
+
+# Informal "we're hiring" feed posts (linkedin.search_posts). These often
+# appear before a formal listing exists.
+hiring_posts:
+  enabled: true
+  phrases: ["we're hiring", "hiring", "join our team", "open role"]
+  date_posted: past-week          # past-24h | past-week | past-month
+  max_pages: 2
+  require_role_match: true         # drop posts that don't mention your role
+
+# How results are scored/ordered.
+ranking:
+  keyword_weight: 3        # per include-keyword found anywhere
+  title_match_weight: 5    # bonus when an include-keyword is in the title
+  recency_weight: 2        # newer postings rank higher
+
+# Enrichment fetches per-job details (title/company/location) via
+# get_job_details so the report is readable and keyword filters can apply.
+# It scrapes one page per job, so keep `top` modest.
+enrichment:
+  enabled: true
+  top: 20
+
+# Which underlying tooling to call. agent-reach uses mcporter.
+backend:
+  command: mcporter
+  server: linkedin
+  timeout: 300
+
+# Output files.
+output:
+  formats: [markdown, json]   # any of: markdown, json, csv
+  dir: ./out
+  top: 50

@@ -22,12 +22,20 @@ searches:
   - keywords: "Founder's Office"
     location: "Noida, India"
 
-  # 3) AI Generalist — Delhi NCR / Gurugram / Noida — fresher (0–6 months)
+  # 3) AI Generalist — Delhi NCR / Gurugram / Noida — 0–1 YoE
   - keywords: "AI Generalist"
     location: "Delhi, India"
   - keywords: "AI Generalist"
     location: "Gurugram, India"
   - keywords: "AI Generalist"
+    location: "Noida, India"
+
+  # 4) Growth roles — Delhi NCR / Gurugram / Noida — 0–1 YoE
+  - keywords: "Growth"
+    location: "Delhi, India"
+  - keywords: "Growth"
+    location: "Gurugram, India"
+  - keywords: "Growth"
     location: "Noida, India"
 
 filters:
@@ -61,6 +69,7 @@ hiring_posts:
     - "founder's office"
     - "chief of staff"
     - "AI generalist"
+    - "growth"
   date_posted: past-week
   max_pages: 2
   require_role_match: true

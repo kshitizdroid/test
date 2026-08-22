@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="path to your spec (default: config.yaml)")
     p.add_argument("--dry-run", action="store_true",
                    help="print the mcporter commands instead of calling them")
+    p.add_argument("--demo", action="store_true",
+                   help="run the full pipeline on bundled sample data "
+                        "(no LinkedIn, no login, no setup)")
     p.add_argument("--only", choices=["jobs", "posts", "both"], default="both",
                    help="restrict to jobs or hiring posts (default: both)")
     p.add_argument("-o", "--out", default=None,
@@ -92,13 +95,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command == "check":
         return cmd_check(cfg.backend.command)
 
-    backend = McporterBackend(
-        command=cfg.backend.command,
-        server=cfg.backend.server,
-        timeout=cfg.backend.timeout,
-        dry_run=args.dry_run,
-        verbose=args.verbose or args.dry_run,
-    )
+    if args.demo:
+        from .samples import DemoBackend
+        print("DEMO MODE — bundled sample data, no LinkedIn / no network.\n")
+        backend = DemoBackend()
+    else:
+        backend = McporterBackend(
+            command=cfg.backend.command,
+            server=cfg.backend.server,
+            timeout=cfg.backend.timeout,
+            dry_run=args.dry_run,
+            verbose=args.verbose or args.dry_run,
+        )
 
     jobs, posts = [], []
     try:

@@ -85,12 +85,25 @@ cp config.example.yaml config.yaml     # then edit config.yaml
 ```bash
 python -m li_reach                 # run with ./config.yaml
 python -m li_reach --config me.yaml
+python -m li_reach --demo          # full pipeline on SAMPLE data — no LinkedIn/login/network
 python -m li_reach --dry-run       # print the mcporter commands, fetch nothing
 python -m li_reach --only jobs     # jobs | posts | both (default both)
 python -m li_reach --only posts
 python -m li_reach -o results/     # override output dir
 python -m li_reach check           # verify mcporter + uvx are set up
 ```
+
+**Try it in 10 seconds (no setup):**
+
+```bash
+pip install -r requirements.txt
+python -m li_reach --config configs/delhi-ncr-fresher.yaml --demo
+cat out/results.md
+```
+
+`--demo` runs the whole filter/exclude/rank/report pipeline against bundled
+sample listings, so you can see the output format and confirm your config's
+filters behave — before doing any LinkedIn setup.
 
 Results land in `out/` (`results.md`, `results.json`, `jobs.csv`).
 

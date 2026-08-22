@@ -37,13 +37,18 @@ filters:
   max_pages: 3
 
 # Keep only fresher-friendly listings; drop senior/experienced ones.
+# NOTE: don't add "staff" (would hit "Chief of Staff") or "manager"
+# (would hit "Product Manager") — keep excludes to seniority signals only.
 include_keywords: []               # leave empty = keep all that pass filters
 exclude_keywords:
   - "senior"
   - "lead"
-  - "5+ years"
+  - "principal"
+  - "2+ years"
   - "3+ years"
-  - "manager, 4"
+  - "4+ years"
+  - "5+ years"
+  - "6+ years"
 exclude_companies: []
 
 # "We're hiring" founder posts — very common for these role types.

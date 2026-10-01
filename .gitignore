@@ -1,3 +1,6 @@
+# umeed — SQLite database (members, drives, RSVPs)
+umeed/data/
+
 # li-reach
 config.yaml          # your personal spec — keep private
 out/                 # generated results

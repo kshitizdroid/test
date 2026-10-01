@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f7a5a" />
+  <title>Umeed — Cleanliness Drives</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===== Join screen (shown until a member has joined) ===== -->
+  <section id="join-screen" class="screen join-screen" hidden>
+    <div class="join-card">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🌱</span>
+        <h1>Umeed</h1>
+      </div>
+      <p class="tagline">Join a cleanliness drive with one tap — no more WhatsApp name lists.</p>
+      <form id="join-form" novalidate>
+        <label for="join-name">Your name</label>
+        <input id="join-name" name="name" type="text" autocomplete="name"
+               placeholder="e.g. Aarti Sharma" required />
+
+        <label for="join-phone">Phone number</label>
+        <input id="join-phone" name="phone" type="tel" autocomplete="tel"
+               inputmode="tel" placeholder="e.g. +91 98765 43210" required />
+
+        <button type="submit" class="btn btn-primary btn-block">Join Umeed</button>
+        <p class="form-error" id="join-error" role="alert"></p>
+      </form>
+      <p class="fine">Your phone number is only used to recognise you and send drive reminders.</p>
+    </div>
+  </section>
+
+  <!-- ===== Main app ===== -->
+  <div id="app" class="app" hidden>
+    <header class="appbar">
+      <div class="appbar-inner">
+        <div class="brand brand-sm">
+          <span class="logo" aria-hidden="true">🌱</span>
+          <strong>Umeed</strong>
+        </div>
+        <div class="appbar-right">
+          <span id="manager-badge" class="badge badge-manager" hidden>Manager</span>
+          <button id="who-btn" class="who" type="button" title="Account"></button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Reminders banner -->
+    <div id="reminders" class="reminders" hidden></div>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab is-active" data-tab="upcoming" role="tab">Upcoming</button>
+      <button class="tab" data-tab="past" role="tab">Past</button>
+    </nav>
+
+    <main class="content">
+      <div id="drive-list" class="drive-list" aria-live="polite"></div>
+    </main>
+
+    <!-- Floating "announce" button (managers only) -->
+    <button id="fab" class="fab" type="button" hidden aria-label="Announce a drive">+</button>
+  </div>
+
+  <!-- ===== Drive detail sheet ===== -->
+  <div id="detail-overlay" class="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <button class="sheet-close" data-close-detail type="button" aria-label="Close">×</button>
+      <div id="detail-body"><!-- filled by JS --></div>
+    </div>
+  </div>
+
+  <!-- ===== Announce / edit drive sheet ===== -->
+  <div id="drive-form-overlay" class="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="drive-form-title">
+      <button class="sheet-close" data-close-form type="button" aria-label="Close">×</button>
+      <h2 id="drive-form-title">Announce a drive</h2>
+      <form id="drive-form" novalidate>
+        <input type="hidden" id="drive-id" />
+        <label for="d-title">Title</label>
+        <input id="d-title" type="text" placeholder="e.g. Yamuna Ghat Clean-up" required />
+
+        <label for="d-start">Date &amp; time</label>
+        <input id="d-start" type="datetime-local" required />
+
+        <label for="d-end">Ends (optional)</label>
+        <input id="d-end" type="datetime-local" />
+
+        <label for="d-location">Location / meeting point</label>
+        <input id="d-location" type="text" placeholder="e.g. Gate 3, Lodhi Garden" />
+
+        <label for="d-desc">Details (optional)</label>
+        <textarea id="d-desc" rows="3" placeholder="What to bring, who to contact…"></textarea>
+
+        <div class="form-row" id="cancel-row" hidden>
+          <label class="checkbox"><input type="checkbox" id="d-cancel" /> Mark this drive as cancelled</label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Save &amp; announce</button>
+        <p class="form-error" id="drive-form-error" role="alert"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== Account / manager sheet ===== -->
+  <div id="account-overlay" class="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="account-title">
+      <button class="sheet-close" data-close-account type="button" aria-label="Close">×</button>
+      <h2 id="account-title">Account</h2>
+      <p class="account-line"><span id="account-name"></span><br><span id="account-phone" class="muted"></span></p>
+
+      <div id="unlock-block">
+        <h3>Become a manager</h3>
+        <p class="muted small">Managers can announce drives and see who's joining. Enter the passcode shared by your coordinator.</p>
+        <form id="unlock-form" novalidate>
+          <input id="unlock-code" type="password" placeholder="Manager passcode" autocomplete="off" />
+          <button type="submit" class="btn btn-secondary btn-block">Unlock manager tools</button>
+          <p class="form-error" id="unlock-error" role="alert"></p>
+        </form>
+      </div>
+
+      <div id="members-block" hidden>
+        <h3>Members (<span id="members-count">0</span>)</h3>
+        <ul id="members-list" class="members-list"></ul>
+      </div>
+
+      <button id="logout-btn" class="btn btn-ghost btn-block" type="button">Sign out of this device</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

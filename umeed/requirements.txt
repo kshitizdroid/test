@@ -1,3 +1,6 @@
-# UMEED app has NO third-party dependencies — it uses only the Python
-# standard library. This file exists so hosting platforms (e.g. Render)
-# that run `pip install -r requirements.txt` during build succeed cleanly.
+# UMEED runs on the Python standard library alone when using local SQLite.
+#
+# pg8000 is a pure-Python PostgreSQL driver, used ONLY when DATABASE_URL is set
+# (i.e. in production, for persistent storage). It installs with no system/C
+# dependencies, so the build stays simple on hosts like Render.
+pg8000>=1.30

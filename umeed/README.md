@@ -15,8 +15,10 @@ to re-skin it for another group.
 - **In-app reminders** nudge members about drives in the next 48 hours, and there
   is a ready-to-wire hook for real WhatsApp/SMS/push reminders.
 
-Built to be effortless to run: **no dependencies**, just Python 3. Data lives in a
-single SQLite file.
+Built to be effortless to run: locally it needs **no dependencies**, just
+Python 3, and data lives in a single SQLite file. In production it can use a
+hosted **Postgres** database (set `DATABASE_URL`) so data is permanent — see
+"Going permanent" below.
 
 ---
 
@@ -179,12 +181,41 @@ Python does:
   behind Nginx/Caddy for HTTPS.
 - **Any PaaS:** start command `python3 server.py` (it reads `$PORT`).
 
-### Going permanent (keeping your data)
+### Going permanent (keeping your data) — free
 
-For records that must survive restarts, do one of:
+On Render's free plan the filesystem resets, so the SQLite file is temporary. To
+make your members and drives **permanent at no cost**, point the app at a free
+hosted Postgres database. The app auto-detects it via the `DATABASE_URL`
+environment variable — no code changes, nothing else to do.
 
-- Attach a **persistent disk** to the service and point `UMEED_DB` at it (a small
-  paid add-on on most hosts), **or**
-- Back up `data/umeed.db` regularly if you self-host, **or**
-- Migrate storage to a hosted database (a focused change — ask and it can be
-  added).
+**Using [Neon](https://neon.tech) (free, no card, recommended):**
+
+1. Sign up at **neon.tech** and create a new project (any name/region).
+2. On the project dashboard, copy the **connection string** — it looks like:
+   ```
+   postgresql://USER:PASSWORD@ep-xxx-xxx.region.aws.neon.tech/neondb?sslmode=require
+   ```
+   (Use the "pooled" connection string if offered; make sure it ends with
+   `?sslmode=require`.)
+3. In **Render → your service → Environment**, add a variable:
+   - **Key:** `DATABASE_URL`
+   - **Value:** the connection string you copied
+4. Save. Render redeploys, the app creates its tables automatically, and from now
+   on your data persists across restarts and redeploys.
+
+To confirm it worked, check the service logs — on startup it prints
+`Database: Postgres (persistent, via DATABASE_URL)`.
+
+> The same works with any Postgres (Render Postgres, Supabase, etc.). The only
+> requirement is a standard `DATABASE_URL`. SSL is on by default; append
+> `?sslmode=disable` only for a local, non-SSL Postgres.
+
+**Other options:** attach a paid persistent disk and point `UMEED_DB` at it, or
+(if self-hosting with SQLite) back up `data/umeed.db` regularly.
+
+### How storage is chosen
+
+| `DATABASE_URL` set? | Backend used | Good for |
+| --- | --- | --- |
+| No  | SQLite file (`UMEED_DB` or `data/umeed.db`) | Local dev, quick trials |
+| Yes | PostgreSQL (`pg8000` driver) | Production — permanent data |

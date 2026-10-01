@@ -12,8 +12,13 @@ attendee list.
 
 Design goals
 ------------
-* **Zero dependencies.** Standard-library only (http.server + sqlite3), so the
-  whole thing runs with `python3 server.py` — no pip, no venv, no external DB.
+* **Light to run.** Locally it uses the Python standard library only (http.server
+  + sqlite3) — `python3 server.py` with no pip, no venv, no external DB.
+* **Persistent in production.** If a `DATABASE_URL` environment variable is set
+  (e.g. a free Neon/Render Postgres), the app uses Postgres instead of the local
+  SQLite file, so members and drives survive restarts and redeploys. The only
+  extra dependency, `pg8000` (a pure-Python Postgres driver), is used only on
+  that path.
 * **Mobile-first.** The frontend (served from ./frontend) is a small single-page
   app that works well on the phones NGO members already use.
 * **Honest MVP.** Real push/WhatsApp delivery is not wired up yet; reminders are
@@ -22,7 +27,7 @@ Design goals
 
 Run it:     python3 server.py
 Reminders:  python3 server.py --send-reminders    (dry-run preview of reminders)
-Config:     UMEED_MANAGER_PASSCODE, UMEED_PORT, UMEED_DB (environment variables)
+Config:     UMEED_MANAGER_PASSCODE, UMEED_PORT, UMEED_DB, DATABASE_URL (env vars)
 """
 
 from __future__ import annotations
@@ -47,6 +52,9 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 DEFAULT_DB = BASE_DIR / "data" / "umeed.db"
 
 DB_PATH = Path(os.environ.get("UMEED_DB", str(DEFAULT_DB)))
+# When DATABASE_URL is set we use Postgres (persistent); otherwise local SQLite.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_PG = bool(DATABASE_URL)
 # Hosting platforms (Render, Railway, Heroku, …) tell the app which port to use
 # via $PORT. Fall back to $UMEED_PORT, then 8000 for local use.
 PORT = int(os.environ.get("PORT") or os.environ.get("UMEED_PORT") or "8000")
@@ -115,73 +123,163 @@ class ApiError(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# Database
+# Database — works with SQLite (local) or Postgres (production, via DATABASE_URL)
 # --------------------------------------------------------------------------- #
+# The app code is written once using '?' placeholders and standard SQL. The thin
+# layer below translates placeholders for Postgres and returns rows as plain
+# dicts from either backend, so nothing above here needs to know which is in use.
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS members (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    phone       TEXT NOT NULL UNIQUE,
-    is_manager  INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL
-);
+def _schema_statements() -> list[str]:
+    # The only dialect difference is how an auto-incrementing primary key is
+    # declared. Booleans are stored as 0/1 integers in both to keep code uniform.
+    pk = "SERIAL PRIMARY KEY" if USE_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    return [
+        f"""CREATE TABLE IF NOT EXISTS members (
+            id          {pk},
+            name        TEXT NOT NULL,
+            phone       TEXT NOT NULL UNIQUE,
+            is_manager  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS drives (
+            id           {pk},
+            title        TEXT NOT NULL,
+            description  TEXT NOT NULL DEFAULT '',
+            location     TEXT NOT NULL DEFAULT '',
+            start_time   TEXT NOT NULL,
+            end_time     TEXT,
+            cancelled    INTEGER NOT NULL DEFAULT 0,
+            created_by   INTEGER,
+            created_at   TEXT NOT NULL
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS rsvps (
+            id          {pk},
+            drive_id    INTEGER NOT NULL,
+            member_id   INTEGER NOT NULL,
+            status      TEXT NOT NULL CHECK (status IN ('going','maybe','no')),
+            updated_at  TEXT NOT NULL,
+            UNIQUE (drive_id, member_id),
+            FOREIGN KEY (drive_id)  REFERENCES drives(id)  ON DELETE CASCADE,
+            FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+        )""",
+    ]
 
-CREATE TABLE IF NOT EXISTS drives (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    title        TEXT NOT NULL,
-    description  TEXT NOT NULL DEFAULT '',
-    location     TEXT NOT NULL DEFAULT '',
-    start_time   TEXT NOT NULL,
-    end_time     TEXT,
-    cancelled    INTEGER NOT NULL DEFAULT 0,
-    created_by   INTEGER,
-    created_at   TEXT NOT NULL,
-    FOREIGN KEY (created_by) REFERENCES members(id)
-);
-
-CREATE TABLE IF NOT EXISTS rsvps (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    drive_id    INTEGER NOT NULL,
-    member_id   INTEGER NOT NULL,
-    status      TEXT NOT NULL CHECK (status IN ('going','maybe','no')),
-    updated_at  TEXT NOT NULL,
-    UNIQUE (drive_id, member_id),
-    FOREIGN KEY (drive_id)  REFERENCES drives(id)  ON DELETE CASCADE,
-    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
-);
-"""
 
 _local = threading.local()
 
 
-def get_db() -> sqlite3.Connection:
-    """One SQLite connection per thread (ThreadingHTTPServer uses many)."""
+def _pg_connect():
+    """Open a new Postgres connection from DATABASE_URL (pure-Python pg8000).
+
+    SSL is used by default (hosted databases such as Neon require it). Append
+    ?sslmode=disable to the URL to turn it off (e.g. for a local Postgres).
+    """
+    import ssl
+    import pg8000.dbapi
+    from urllib.parse import urlparse, unquote, parse_qs
+
+    u = urlparse(DATABASE_URL)
+    sslmode = (parse_qs(u.query).get("sslmode", ["require"])[0]).lower()
+    ssl_context = None if sslmode in ("disable", "allow") else ssl.create_default_context()
+    return pg8000.dbapi.connect(
+        user=unquote(u.username or ""),
+        password=unquote(u.password or ""),
+        host=u.hostname,
+        port=u.port or 5432,
+        database=(u.path or "/").lstrip("/"),
+        ssl_context=ssl_context,
+    )
+
+
+def open_conn():
+    """Get a connection to use for one request.
+
+    SQLite: one long-lived connection per thread. Postgres: a fresh connection
+    per request (simple and robust against idle-timeouts on serverless hosts).
+    """
+    if USE_PG:
+        return _pg_connect()
     conn = getattr(_local, "conn", None)
     if conn is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         _local.conn = conn
     return conn
 
 
-def init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def close_conn(conn) -> None:
+    if USE_PG and conn is not None:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+    # SQLite connections are reused per-thread, so we leave them open.
+
+
+def _sql(sql: str) -> str:
+    return sql.replace("?", "%s") if USE_PG else sql
+
+
+def fetch_all(conn, sql: str, params: tuple = ()) -> list[dict]:
+    cur = conn.cursor()
     try:
-        conn.executescript(SCHEMA)
+        cur.execute(_sql(sql), params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    finally:
+        cur.close()
+
+
+def fetch_one(conn, sql: str, params: tuple = ()) -> dict | None:
+    cur = conn.cursor()
+    try:
+        cur.execute(_sql(sql), params)
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+    finally:
+        cur.close()
+
+
+def execute(conn, sql: str, params: tuple = ()) -> None:
+    """Run a write (INSERT/UPDATE/DELETE/DDL) and commit."""
+    cur = conn.cursor()
+    try:
+        cur.execute(_sql(sql), params)
         conn.commit()
     finally:
-        conn.close()
+        cur.close()
+
+
+def insert_returning_id(conn, sql: str, params: tuple = ()) -> int:
+    """Run an INSERT that ends in 'RETURNING id' and return the new id."""
+    cur = conn.cursor()
+    try:
+        cur.execute(_sql(sql), params)
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return new_id
+    finally:
+        cur.close()
+
+
+def init_db() -> None:
+    conn = open_conn()
+    try:
+        for stmt in _schema_statements():
+            execute(conn, stmt)
+    finally:
+        close_conn(conn)
 
 
 # --------------------------------------------------------------------------- #
 # Serialisation
 # --------------------------------------------------------------------------- #
 
-def member_public(row: sqlite3.Row) -> dict:
+def member_public(row: dict) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -190,9 +288,10 @@ def member_public(row: sqlite3.Row) -> dict:
     }
 
 
-def drive_summary(conn: sqlite3.Connection, row: sqlite3.Row, member_id: int | None) -> dict:
+def drive_summary(conn, row: dict, member_id: int | None) -> dict:
     counts = {"going": 0, "maybe": 0, "no": 0}
-    for r in conn.execute(
+    for r in fetch_all(
+        conn,
         "SELECT status, COUNT(*) c FROM rsvps WHERE drive_id=? GROUP BY status",
         (row["id"],),
     ):
@@ -200,10 +299,11 @@ def drive_summary(conn: sqlite3.Connection, row: sqlite3.Row, member_id: int | N
 
     my_status = None
     if member_id is not None:
-        mr = conn.execute(
+        mr = fetch_one(
+            conn,
             "SELECT status FROM rsvps WHERE drive_id=? AND member_id=?",
             (row["id"], member_id),
-        ).fetchone()
+        )
         my_status = mr["status"] if mr else None
 
     start = parse_dt(row["start_time"])
@@ -228,7 +328,7 @@ def drive_summary(conn: sqlite3.Connection, row: sqlite3.Row, member_id: int | N
 # browser after joining) and send both on each request. This is intentionally
 # light for an MVP; see README "Security notes" before using with sensitive data.
 
-def current_member(conn: sqlite3.Connection, handler: "Handler") -> sqlite3.Row | None:
+def current_member(conn, handler: "Handler") -> dict | None:
     mid = handler.headers.get("X-Member-Id")
     phone = handler.headers.get("X-Member-Phone")
     if not mid or not phone:
@@ -237,20 +337,20 @@ def current_member(conn: sqlite3.Connection, handler: "Handler") -> sqlite3.Row 
         mid_int = int(mid)
     except ValueError:
         return None
-    row = conn.execute("SELECT * FROM members WHERE id=?", (mid_int,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM members WHERE id=?", (mid_int,))
     if row and row["phone"] == normalize_phone(phone):
         return row
     return None
 
 
-def require_member(conn, handler) -> sqlite3.Row:
+def require_member(conn, handler) -> dict:
     m = current_member(conn, handler)
     if not m:
         raise ApiError(401, "Please join first.")
     return m
 
 
-def require_manager(conn, handler) -> sqlite3.Row:
+def require_manager(conn, handler) -> dict:
     m = require_member(conn, handler)
     if not m["is_manager"]:
         raise ApiError(403, "Only a manager can do that.")
@@ -269,21 +369,20 @@ def api_join(conn, handler, body, params):
     if len(phone.lstrip("+")) < 7:
         raise ApiError(400, "Please enter a valid phone number.")
 
-    existing = conn.execute("SELECT * FROM members WHERE phone=?", (phone,)).fetchone()
+    existing = fetch_one(conn, "SELECT * FROM members WHERE phone=?", (phone,))
     if existing:
         # Returning member — update their display name if it changed, then log in.
         if existing["name"] != name:
-            conn.execute("UPDATE members SET name=? WHERE id=?", (name, existing["id"]))
-            conn.commit()
-            existing = conn.execute("SELECT * FROM members WHERE id=?", (existing["id"],)).fetchone()
+            execute(conn, "UPDATE members SET name=? WHERE id=?", (name, existing["id"]))
+            existing = fetch_one(conn, "SELECT * FROM members WHERE id=?", (existing["id"],))
         return {"member": member_public(existing), "returning": True}
 
-    cur = conn.execute(
-        "INSERT INTO members (name, phone, is_manager, created_at) VALUES (?,?,0,?)",
+    new_id = insert_returning_id(
+        conn,
+        "INSERT INTO members (name, phone, is_manager, created_at) VALUES (?,?,0,?) RETURNING id",
         (name, phone, iso(now_utc())),
     )
-    conn.commit()
-    row = conn.execute("SELECT * FROM members WHERE id=?", (cur.lastrowid,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM members WHERE id=?", (new_id,))
     return {"member": member_public(row), "returning": False}
 
 
@@ -291,16 +390,15 @@ def api_unlock_manager(conn, handler, body, params):
     m = require_member(conn, handler)
     if (body.get("passcode") or "") != MANAGER_PASSCODE:
         raise ApiError(403, "Incorrect manager passcode.")
-    conn.execute("UPDATE members SET is_manager=1 WHERE id=?", (m["id"],))
-    conn.commit()
-    row = conn.execute("SELECT * FROM members WHERE id=?", (m["id"],)).fetchone()
+    execute(conn, "UPDATE members SET is_manager=1 WHERE id=?", (m["id"],))
+    row = fetch_one(conn, "SELECT * FROM members WHERE id=?", (m["id"],))
     return {"member": member_public(row)}
 
 
 def api_list_drives(conn, handler, body, params):
     me = current_member(conn, handler)
     scope = (params.get("scope", ["upcoming"])[0]).lower()
-    rows = conn.execute("SELECT * FROM drives ORDER BY start_time ASC").fetchall()
+    rows = fetch_all(conn, "SELECT * FROM drives ORDER BY start_time ASC")
     drives = [drive_summary(conn, r, me["id"] if me else None) for r in rows]
 
     if scope == "upcoming":
@@ -322,9 +420,10 @@ def api_create_drive(conn, handler, body, params):
         raise ApiError(400, "A valid date & time is required.")
     end = parse_dt(body.get("end_time", "")) if body.get("end_time") else None
 
-    cur = conn.execute(
+    new_id = insert_returning_id(
+        conn,
         """INSERT INTO drives (title, description, location, start_time, end_time, created_by, created_at)
-           VALUES (?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?) RETURNING id""",
         (
             title,
             (body.get("description") or "").strip(),
@@ -335,14 +434,13 @@ def api_create_drive(conn, handler, body, params):
             iso(now_utc()),
         ),
     )
-    conn.commit()
-    row = conn.execute("SELECT * FROM drives WHERE id=?", (cur.lastrowid,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (new_id,))
     return {"drive": drive_summary(conn, row, mgr["id"])}
 
 
 def api_get_drive(conn, handler, body, params, drive_id):
     me = current_member(conn, handler)
-    row = conn.execute("SELECT * FROM drives WHERE id=?", (drive_id,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (drive_id,))
     if not row:
         raise ApiError(404, "Drive not found.")
     detail = drive_summary(conn, row, me["id"] if me else None)
@@ -350,7 +448,8 @@ def api_get_drive(conn, handler, body, params, drive_id):
     # Attendee lists grouped by status (names only — the clean replacement for
     # the WhatsApp pile-up).
     attendees = {"going": [], "maybe": [], "no": []}
-    for r in conn.execute(
+    for r in fetch_all(
+        conn,
         """SELECT m.name, r.status FROM rsvps r
            JOIN members m ON m.id = r.member_id
            WHERE r.drive_id=? ORDER BY r.updated_at ASC""",
@@ -363,7 +462,7 @@ def api_get_drive(conn, handler, body, params, drive_id):
 
 def api_update_drive(conn, handler, body, params, drive_id):
     require_manager(conn, handler)
-    row = conn.execute("SELECT * FROM drives WHERE id=?", (drive_id,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (drive_id,))
     if not row:
         raise ApiError(404, "Drive not found.")
 
@@ -389,9 +488,8 @@ def api_update_drive(conn, handler, body, params, drive_id):
 
     if fields:
         values.append(drive_id)
-        conn.execute(f"UPDATE drives SET {', '.join(fields)} WHERE id=?", values)
-        conn.commit()
-    row = conn.execute("SELECT * FROM drives WHERE id=?", (drive_id,)).fetchone()
+        execute(conn, f"UPDATE drives SET {', '.join(fields)} WHERE id=?", tuple(values))
+    row = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (drive_id,))
     return {"drive": drive_summary(conn, row, None)}
 
 
@@ -400,25 +498,25 @@ def api_rsvp(conn, handler, body, params, drive_id):
     status = (body.get("status") or "").lower()
     if status not in ("going", "maybe", "no"):
         raise ApiError(400, "Status must be one of: going, maybe, no.")
-    drive = conn.execute("SELECT * FROM drives WHERE id=?", (drive_id,)).fetchone()
+    drive = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (drive_id,))
     if not drive:
         raise ApiError(404, "Drive not found.")
 
-    conn.execute(
+    execute(
+        conn,
         """INSERT INTO rsvps (drive_id, member_id, status, updated_at)
            VALUES (?,?,?,?)
            ON CONFLICT(drive_id, member_id)
            DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at""",
         (drive_id, me["id"], status, iso(now_utc())),
     )
-    conn.commit()
-    row = conn.execute("SELECT * FROM drives WHERE id=?", (drive_id,)).fetchone()
+    row = fetch_one(conn, "SELECT * FROM drives WHERE id=?", (drive_id,))
     return {"drive": drive_summary(conn, row, me["id"])}
 
 
 def api_list_members(conn, handler, body, params):
     require_manager(conn, handler)
-    rows = conn.execute("SELECT * FROM members ORDER BY name COLLATE NOCASE").fetchall()
+    rows = fetch_all(conn, "SELECT * FROM members ORDER BY LOWER(name)")
     return {"members": [member_public(r) for r in rows]}
 
 
@@ -428,14 +526,15 @@ def api_reminders(conn, handler, body, params):
     me = require_member(conn, handler)
     window_end = now_utc() + timedelta(hours=REMINDER_WINDOW_HOURS)
     out = []
-    for row in conn.execute("SELECT * FROM drives WHERE cancelled=0 ORDER BY start_time ASC"):
+    for row in fetch_all(conn, "SELECT * FROM drives WHERE cancelled=0 ORDER BY start_time ASC"):
         start = parse_dt(row["start_time"])
         if not start or start < now_utc() or start > window_end:
             continue
-        mr = conn.execute(
+        mr = fetch_one(
+            conn,
             "SELECT status FROM rsvps WHERE drive_id=? AND member_id=?",
             (row["id"], me["id"]),
-        ).fetchone()
+        )
         out.append({
             "drive_id": row["id"],
             "title": row["title"],
@@ -451,7 +550,7 @@ def api_reminders(conn, handler, body, params):
 # Notification hook (stub)
 # --------------------------------------------------------------------------- #
 
-def notify(member: sqlite3.Row, message: str) -> None:
+def notify(member: dict, message: str) -> None:
     """Deliver a reminder to a member.
 
     MVP behaviour: print to stdout. To go live, replace the body with a call to
@@ -470,25 +569,25 @@ def collect_and_send_reminders(dry_run: bool = True) -> list[str]:
         python3 server.py --send-reminders
     """
     init_db()
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = open_conn()
     messages: list[str] = []
     window_end = now_utc() + timedelta(hours=REMINDER_WINDOW_HOURS)
     try:
-        members = conn.execute("SELECT * FROM members").fetchall()
-        drives = conn.execute(
-            "SELECT * FROM drives WHERE cancelled=0 ORDER BY start_time ASC"
-        ).fetchall()
+        members = fetch_all(conn, "SELECT * FROM members")
+        drives = fetch_all(
+            conn, "SELECT * FROM drives WHERE cancelled=0 ORDER BY start_time ASC"
+        )
         for drive in drives:
             start = parse_dt(drive["start_time"])
             if not start or start < now_utc() or start > window_end:
                 continue
             when = start.astimezone().strftime("%a %d %b, %I:%M %p")
             for member in members:
-                rsvp = conn.execute(
+                rsvp = fetch_one(
+                    conn,
                     "SELECT status FROM rsvps WHERE drive_id=? AND member_id=?",
                     (drive["id"], member["id"]),
-                ).fetchone()
+                )
                 if rsvp and rsvp["status"] == "no":
                     continue  # don't nag people who already declined
                 if rsvp and rsvp["status"] == "going":
@@ -501,7 +600,7 @@ def collect_and_send_reminders(dry_run: bool = True) -> list[str]:
                 if not dry_run:
                     notify(member, msg)
     finally:
-        conn.close()
+        close_conn(conn)
     return messages
 
 
@@ -569,8 +668,9 @@ class Handler(BaseHTTPRequestHandler):
                 match = pattern.match(path)
                 if not match:
                     continue
+                conn = None
                 try:
-                    conn = get_db()
+                    conn = open_conn()
                     body = self._read_body() if method in ("POST", "PATCH") else {}
                     kwargs = {k: int(v) for k, v in match.groupdict().items()}
                     result = fn(conn, self, body, params, **kwargs)
@@ -580,6 +680,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:  # noqa: BLE001 - last-resort guard
                     sys.stderr.write(f"[error] {method} {path}: {e!r}\n")
                     self._send_json(500, {"error": "Something went wrong."})
+                finally:
+                    close_conn(conn)
                 return
             self._send_json(404, {"error": "Not found."})
             return
@@ -629,7 +731,10 @@ def serve():
               "to something private before sharing this app.")
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Umeed is running  ->  http://localhost:{PORT}")
-    print(f"Database: {DB_PATH}")
+    if USE_PG:
+        print("Database: Postgres (persistent, via DATABASE_URL)")
+    else:
+        print(f"Database: SQLite file at {DB_PATH} (set DATABASE_URL for persistent Postgres)")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

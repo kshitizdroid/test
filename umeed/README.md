@@ -1,8 +1,12 @@
 # 🌱 Umeed — Cleanliness Drive Organiser
 
-A tiny web app for NGOs that run regular cleanliness drives. It replaces the
-WhatsApp "a drive is announced → 40 people type their name" chaos with a clean,
-one-tap RSVP app.
+A tiny web app built for **UMEED Foundation** (*A Hope for the society*) and any
+NGO that runs regular cleanliness drives. It replaces the WhatsApp "a drive is
+announced → 40 people type their name" chaos with a clean, one-tap RSVP app.
+
+The app is brand-styled with the foundation's logo and colours
+(`frontend/logo.jpg`); swap that file and the palette in `frontend/styles.css`
+to re-skin it for another group.
 
 - **The manager** announces a drive once (title, date/time, location, details).
 - **Members** open the app and tap **Going / Maybe / Can't** — a single tap, no

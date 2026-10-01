@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1f7a5a" />
-  <title>Umeed — Cleanliness Drives</title>
+  <meta name="theme-color" content="#1f8b3d" />
+  <title>UMEED Foundation — Drives</title>
+  <link rel="icon" href="logo.jpg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <!-- ===== Join screen (shown until a member has joined) ===== -->
   <section id="join-screen" class="screen join-screen" hidden>
     <div class="join-card">
-      <div class="brand">
-        <span class="logo" aria-hidden="true">🌱</span>
-        <h1>Umeed</h1>
-      </div>
-      <p class="tagline">Join a cleanliness drive with one tap — no more WhatsApp name lists.</p>
+      <img class="join-logo" src="logo.jpg" alt="UMEED Foundation logo" />
+      <h1 class="join-title">UMEED Foundation</h1>
+      <p class="tagline">A Hope for the society</p>
+      <p class="mission">Join our cleanliness drives with a single tap — see what's coming up and tell us you're in. No more lost WhatsApp lists.</p>
       <form id="join-form" novalidate>
         <label for="join-name">Your name</label>
         <input id="join-name" name="name" type="text" autocomplete="name"
@@ -37,8 +37,8 @@
     <header class="appbar">
       <div class="appbar-inner">
         <div class="brand brand-sm">
-          <span class="logo" aria-hidden="true">🌱</span>
-          <strong>Umeed</strong>
+          <span class="logo-chip"><img src="logo.jpg" alt="" /></span>
+          <strong>UMEED Foundation</strong>
         </div>
         <div class="appbar-right">
           <span id="manager-badge" class="badge badge-manager" hidden>Manager</span>
@@ -123,6 +123,11 @@
       <div id="members-block" hidden>
         <h3>Members (<span id="members-count">0</span>)</h3>
         <ul id="members-list" class="members-list"></ul>
+      </div>
+
+      <div id="about-block">
+        <h3>About UMEED Foundation</h3>
+        <p class="muted small">UMEED — <em>A Hope for the society</em>. We are a team of young individuals working to restore the harm done to our planet and to secure a safe, healthy environment for the next generation. We are dedicated to improving the quality of life for those in need and ensuring a sustainable future.</p>
       </div>
 
       <button id="logout-btn" class="btn btn-ghost btn-block" type="button">Sign out of this device</button>

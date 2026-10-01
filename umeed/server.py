@@ -62,6 +62,8 @@ STATIC_TYPES = {
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
     ".webmanifest": "application/manifest+json",
 }
 

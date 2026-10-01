@@ -47,7 +47,9 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 DEFAULT_DB = BASE_DIR / "data" / "umeed.db"
 
 DB_PATH = Path(os.environ.get("UMEED_DB", str(DEFAULT_DB)))
-PORT = int(os.environ.get("UMEED_PORT", "8000"))
+# Hosting platforms (Render, Railway, Heroku, …) tell the app which port to use
+# via $PORT. Fall back to $UMEED_PORT, then 8000 for local use.
+PORT = int(os.environ.get("PORT") or os.environ.get("UMEED_PORT") or "8000")
 # The passcode that turns an ordinary member into a manager (drive organiser).
 # CHANGE THIS in production via the UMEED_MANAGER_PASSCODE environment variable.
 MANAGER_PASSCODE = os.environ.get("UMEED_MANAGER_PASSCODE", "umeed2025")

@@ -1,0 +1,29 @@
+# Render.com Blueprint for the UMEED Foundation app.
+# https://render.com/docs/blueprint-spec
+#
+# How to use (one time):
+#   1. Push this repo to GitHub (already done).
+#   2. On Render: New  ->  Blueprint  ->  pick this repository.
+#   3. Render reads this file and creates the service below.
+#   4. Set the UMEED_MANAGER_PASSCODE value when prompted, then Apply.
+#
+# Note on data: the free plan has an EPHEMERAL filesystem, so the SQLite
+# database resets when the service redeploys or restarts. That is fine for
+# trying the app and sharing it with members. For permanent data, attach a
+# Render Disk (small paid add-on) or switch to a hosted database — see the
+# "Going permanent" section in umeed/README.md.
+
+services:
+  - type: web
+    name: umeed-foundation
+    runtime: python
+    plan: free
+    rootDir: umeed
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python3 server.py"
+    autoDeploy: true
+    envVars:
+      # The passcode that turns a member into a manager. Render will ask you
+      # to enter a value (it is not stored in the repo).
+      - key: UMEED_MANAGER_PASSCODE
+        sync: false

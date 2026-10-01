@@ -147,12 +147,44 @@ exposing it widely, consider:
 
 ## Deploying
 
-Because it is a single Python process with an SQLite file, Umeed runs anywhere
+### Easiest: Render.com (free)
+
+A `render.yaml` blueprint is included at the repository root, so Render can set
+everything up for you:
+
+1. Go to **https://render.com** and sign up (free) with your GitHub account.
+2. Click **New → Blueprint** and choose this repository.
+3. Render reads `render.yaml` and proposes a free web service called
+   **umeed-foundation**.
+4. When prompted, set **`UMEED_MANAGER_PASSCODE`** to a private passcode for your
+   coordinators, then click **Apply**.
+5. After a minute or two you'll get a public URL like
+   `https://umeed-foundation.onrender.com` — share it with your members.
+
+The app listens on the `PORT` Render provides automatically; no other config is
+needed.
+
+> **Free-plan caveats:** the service sleeps after ~15 minutes of inactivity (the
+> first visit then takes ~30–60s to wake), and the filesystem is **ephemeral** —
+> the SQLite database resets on each redeploy/restart. Perfect for trying the app
+> and sharing it with members; see "Going permanent" before relying on it for
+> long-term records.
+
+### Other options
+
+Because it is a single Python process with an SQLite file, the app runs anywhere
 Python does:
 
 - **A small VPS / home server:** `UMEED_MANAGER_PASSCODE=… python3 server.py`
   behind Nginx/Caddy for HTTPS.
-- **A free/cheap PaaS:** start command `python3 server.py` (it reads `UMEED_PORT`),
-  with a persistent volume for `data/umeed.db`.
+- **Any PaaS:** start command `python3 server.py` (it reads `$PORT`).
 
-Back up `data/umeed.db` to keep your members and drive history.
+### Going permanent (keeping your data)
+
+For records that must survive restarts, do one of:
+
+- Attach a **persistent disk** to the service and point `UMEED_DB` at it (a small
+  paid add-on on most hosts), **or**
+- Back up `data/umeed.db` regularly if you self-host, **or**
+- Migrate storage to a hosted database (a focused change — ask and it can be
+  added).

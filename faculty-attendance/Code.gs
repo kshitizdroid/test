@@ -1,24 +1,22 @@
 /**
- * Pinak Institute — Faculty Attendance (SIMPLE version)
- * =====================================================
- * Faculty scan one QR, tap their NAME (shown as options, not a dropdown),
- * tap Check-in or Check-out, submit. That's it. Date & time are automatic.
+ * Pinak Institute — Faculty Attendance (simple form, late logic behind the scenes)
+ * ================================================================================
+ * The Google Form stays minimal — faculty only tap their NAME (shown as options,
+ * not a dropdown) and Check-in / Check-out. Date & time are automatic.
  *
- * Builds in YOUR Google account:
- *   • A Google Form with just 2 questions: Faculty Name, Action
- *   • A linked Google Sheet with tabs:
- *       - Form Responses 1  (raw, append-only — original records, never edited)
- *       - Leave             (admin: leave / institute holidays)
- *       - Corrections       (fix missed/wrong entries without touching originals)
- *       - Daily Dashboard   (pick a date → check-in / check-out / status per faculty)
- *       - Monthly Report    (pick a month → present / absent / leave per faculty)
- *   • A QR image saved to your Drive
- *   • Triggers to keep it current
+ * LATE DETECTION happens inside the Sheet, never on the form:
+ *   - The session (Morning/Evening) is inferred from the CHECK-IN TIME
+ *     (before SESSION_SPLIT = Morning, at/after = Evening).
+ *   - Prajjwal Gupta: Evening only, late after 4:25 PM.
+ *   - Mohit Pal: Morning late after 11:35 AM, Evening late after 4:25 PM.
+ *   - Aakanksha, Ajeet Sir: flexible — recorded only, never flagged late.
  *
- * FIRST TIME:  paste this file, Save, then Run ▶ setupSystem.
- * ALREADY BUILT THE OLD VERSION?  Run ▶ resetAndSetup instead (it trashes the
- * old Form & Sheet and builds the simple one — you'll get a new QR link).
- * Day to day, use the "Pinak Attendance" menu inside the Sheet.
+ * Sheet tabs: Form Responses 1 (raw, never edited), Leave, Corrections,
+ * Daily Dashboard, Monthly Report. Plus a QR image in your Drive.
+ *
+ * FIRST TIME:  paste this file, Save, Run ▶ setupSystem.
+ * REPLACING AN OLDER VERSION:  Run ▶ resetAndSetup (trashes old Form & Sheet,
+ * builds this one — you get a new QR). Day to day use the "Pinak Attendance" menu.
  */
 
 var TIMEZONE = 'Asia/Kolkata';
@@ -30,6 +28,15 @@ var FACULTY = [
   ['Aakanksha',      'Biology'],
   ['Ajeet Sir',      'English']
 ];
+
+// Late rules per faculty (hidden from the form). Session inferred from check-in time.
+// Faculty absent from this map are flexible (never flagged late).
+var LATE_RULES = {
+  'Prajjwal Gupta': [{ session: 'Evening', lateAfter: '16:25' }],
+  'Mohit Pal':      [{ session: 'Morning', lateAfter: '11:35' },
+                     { session: 'Evening', lateAfter: '16:25' }]
+};
+var SESSION_SPLIT = '14:30';   // check-in before this = Morning, at/after = Evening
 
 var ACTIONS = ['Check-in', 'Check-out'];
 var WORKING_DAYS = [1, 2, 3, 4, 5, 6];   // Mon–Sat (Sun off)
@@ -86,7 +93,7 @@ function setupSystem() {
   Logger.log('Reload the Sheet and use the "Pinak Attendance" menu.');
 }
 
-/** Trash the old Form & Sheet, then build the simple version fresh. */
+/** Trash the old Form & Sheet, then build this version fresh. */
 function resetAndSetup() {
   var props = PropertiesService.getScriptProperties();
   ['FORM_ID', 'SHEET_ID', 'QR_FILE_ID'].forEach(function (k) {
@@ -94,9 +101,7 @@ function resetAndSetup() {
     if (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} }
     props.deleteProperty(k);
   });
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    try { ScriptApp.deleteTrigger(t); } catch (e) {}
-  });
+  ScriptApp.getProjectTriggers().forEach(function (t) { try { ScriptApp.deleteTrigger(t); } catch (e) {} });
   setupSystem();
 }
 
@@ -119,7 +124,7 @@ function buildCorrectionsSheet_(ss) {
   sh.getRange(1, 1, 1, 7).setValues([['Date', 'Faculty', 'Action', 'Corrected Time', 'Mode', 'Reason', 'Approved By']]).setFontWeight('bold');
   sh.getRange('A2').setNote(
     'Fix missed/wrong entries here. Originals in "Form Responses 1" are NEVER changed.\n' +
-    'Date = YYYY-MM-DD.  Corrected Time = HH:MM (24h).\n' +
+    'Date = YYYY-MM-DD.  Corrected Time = HH:MM (24h) — late is re-checked from this time.\n' +
     'Mode: SET = add/overwrite this entry · VOID = cancel a wrong entry (leave time blank).\n' +
     'Reason + Approved By = audit trail.');
   sh.setFrozenRows(1); sh.autoResizeColumns(1, 7);
@@ -131,8 +136,8 @@ function buildDailyDashboardSheet_(ss) {
   sh.getRange('A1').setValue('Daily Attendance').setFontWeight('bold').setFontSize(14);
   sh.getRange('A2').setValue('Date:').setFontWeight('bold');
   sh.getRange('B2').setValue(todayStr_()).setNote('Type YYYY-MM-DD, then menu → Refresh dashboards.');
-  sh.getRange(4, 1, 1, 5).setValues([['Faculty', 'Subject', 'Check-in', 'Check-out', 'Status']]).setFontWeight('bold');
-  sh.setFrozenRows(4); sh.autoResizeColumns(1, 5);
+  sh.getRange(4, 1, 1, 6).setValues([['Faculty', 'Subject', 'Check-in', 'Check-out', 'Late?', 'Status']]).setFontWeight('bold');
+  sh.setFrozenRows(4); sh.autoResizeColumns(1, 6);
 }
 
 function buildMonthlyReportSheet_(ss) {
@@ -141,15 +146,31 @@ function buildMonthlyReportSheet_(ss) {
   sh.getRange('A1').setValue('Monthly Report').setFontWeight('bold').setFontSize(14);
   sh.getRange('A2').setValue('Month:').setFontWeight('bold');
   sh.getRange('B2').setValue(monthStr_()).setNote('Type YYYY-MM, then menu → Refresh dashboards.');
-  sh.getRange(4, 1, 1, 6).setValues([['Faculty', 'Subject', 'Working Days', 'Present', 'Absent', 'Leave']]).setFontWeight('bold');
-  sh.setFrozenRows(4); sh.autoResizeColumns(1, 6);
+  sh.getRange(4, 1, 1, 7).setValues([['Faculty', 'Subject', 'Working Days', 'Present', 'Absent', 'Leave', 'Late Count']]).setFontWeight('bold');
+  sh.setFrozenRows(4); sh.autoResizeColumns(1, 7);
 }
 
-/* ============================ LOGIC ============================ */
+/* ============================ LATE LOGIC (hidden from form) ============================ */
 
-/** Collapse raw responses + corrections into per date/faculty check-in & check-out. */
+function sessionOf_(time) { return time < SESSION_SPLIT ? 'Morning' : 'Evening'; }
+
+/** For a check-in time, returns {session, late} if this faculty has a rule for that
+ *  session, else null (flexible / no rule → never late). */
+function lateInfo_(faculty, time) {
+  var rules = LATE_RULES[faculty];
+  if (!rules || !time) return null;
+  var sess = sessionOf_(time);
+  for (var i = 0; i < rules.length; i++) {
+    if (rules[i].session === sess) return { session: sess, late: time > rules[i].lateAfter };
+  }
+  return null;
+}
+
+/* ============================ DATA ============================ */
+
+/** Collapse raw responses + corrections into per date/faculty check-in & check-out lists. */
 function buildDaily_(ss) {
-  var map = {};  // date|faculty -> {in:[], out:[]}
+  var map = {};
   function slot(d, f) { var k = d + '|' + f; return map[k] || (map[k] = { in: [], out: [] }); }
 
   readResponses_(ss).forEach(function (r) {
@@ -159,9 +180,8 @@ function buildDaily_(ss) {
 
   readCorrections_(ss).forEach(function (c) {
     var s = slot(c.date, c.faculty);
-    var arr = (c.action === 'Check-out') ? s.out : s.in;
     if (c.mode === 'VOID') { if (c.action === 'Check-out') s.out = []; else s.in = []; }
-    else if (c.time) arr.push(c.time);
+    else if (c.time) (c.action === 'Check-out' ? s.out : s.in).push(c.time);
   });
 
   return map;
@@ -175,48 +195,60 @@ function buildDailyDashboard() {
 
   var out = FACULTY.map(function (f) {
     var s = map[date + '|' + f[0]] || { in: [], out: [] };
-    var ci = s.in.length ? s.in.sort()[0] : '';                 // earliest check-in
-    var co = s.out.length ? s.out.sort()[s.out.length - 1] : ''; // latest check-out
+    var ins = s.in.slice().sort(), outs = s.out.slice().sort();
+
+    // Late across all of today's check-ins for this faculty.
+    var lateSessions = [], hasRuleHit = false;
+    ins.forEach(function (t) {
+      var li = lateInfo_(f[0], t);
+      if (li) { hasRuleHit = true; if (li.late && lateSessions.indexOf(li.session) === -1) lateSessions.push(li.session); }
+    });
+    var lateCell = lateSessions.length ? 'LATE (' + lateSessions.join(', ') + ')'
+                 : (hasRuleHit ? 'On time' : '');
+
     var status;
-    if (!ci && !co) status = isOnLeave_(ss, date, f[0]) ? 'Leave' : 'Absent';
-    else if (ci && co) status = 'Complete';
-    else status = ci ? 'Missing check-out' : 'Missing check-in';
-    return [f[0], f[1], ci, co, status];
+    if (!ins.length && !outs.length) status = isOnLeave_(ss, date, f[0]) ? 'Leave' : 'Absent';
+    else if (ins.length && outs.length) status = 'Complete';
+    else status = ins.length ? 'Missing check-out' : 'Missing check-in';
+
+    return [f[0], f[1], ins.join(', '), outs.join(', '), lateCell, status];
   });
 
   var start = 5, last = sh.getLastRow();
-  if (last >= start) sh.getRange(start, 1, last - start + 1, 5).clearContent().setBackground(null);
-  if (out.length) { sh.getRange(start, 1, out.length, 5).setValues(out); colorDaily_(sh, start, out); }
-  sh.getRange('D2').setValue('(updated ' + fmtDateTime_(new Date()) + ')');
+  if (last >= start) sh.getRange(start, 1, last - start + 1, 6).clearContent().setBackground(null).setFontColor(null);
+  if (out.length) { sh.getRange(start, 1, out.length, 6).setValues(out); colorDaily_(sh, start, out); }
+  sh.getRange('E2').setValue('(updated ' + fmtDateTime_(new Date()) + ')');
 }
 
 function buildMonthlyReport() {
   var ss = openSheet_();
   var sh = ss.getSheetByName('Monthly Report');
-  var month = String(sh.getRange('B2').getValue()).trim();  // YYYY-MM
+  var month = String(sh.getRange('B2').getValue()).trim();
   var map = buildDaily_(ss);
   var leaves = readLeave_(ss);
   var workingDays = workingDaysInMonth_(month, leaves);
 
   var out = FACULTY.map(function (f) {
-    var present = {}, leave = {};
+    var present = {}, leave = {}, lateCount = 0;
     Object.keys(map).forEach(function (k) {
       var parts = k.split('|');
       if (parts[1] !== f[0] || parts[0].indexOf(month) !== 0) return;
-      if (map[k].in.length || map[k].out.length) present[parts[0]] = true;
+      var s = map[k];
+      if (s.in.length || s.out.length) present[parts[0]] = true;
+      s.in.forEach(function (t) { var li = lateInfo_(f[0], t); if (li && li.late) lateCount++; });
     });
     leaves.forEach(function (lv) {
       if (lv.date.indexOf(month) !== 0 || lv.type === 'Holiday') return;
       if (lv.faculty === f[0] || lv.faculty === 'ALL') leave[lv.date] = true;
     });
     var p = Object.keys(present).length, l = Object.keys(leave).length;
-    return [f[0], f[1], workingDays, p, Math.max(0, workingDays - p - l), l];
+    return [f[0], f[1], workingDays, p, Math.max(0, workingDays - p - l), l, lateCount];
   });
 
   var start = 5, last = sh.getLastRow();
-  if (last >= start) sh.getRange(start, 1, last - start + 1, 6).clearContent();
-  if (out.length) sh.getRange(start, 1, out.length, 6).setValues(out);
-  sh.getRange('D2').setValue('(updated ' + fmtDateTime_(new Date()) + ')');
+  if (last >= start) sh.getRange(start, 1, last - start + 1, 7).clearContent();
+  if (out.length) sh.getRange(start, 1, out.length, 7).setValues(out);
+  sh.getRange('E2').setValue('(updated ' + fmtDateTime_(new Date()) + ')');
 }
 
 function refreshAll() { buildDailyDashboard(); buildMonthlyReport(); }
@@ -356,12 +388,13 @@ function workingDaysInMonth_(month, leaves) {
 
 function colorDaily_(sh, start, rows) {
   for (var i = 0; i < rows.length; i++) {
-    var status = rows[i][4], bg;
+    var status = rows[i][5], late = rows[i][4], bg;
     if (status === 'Absent') bg = '#f4cccc';
     else if (status === 'Complete') bg = '#d9ead3';
     else if (status === 'Leave') bg = '#cfe2f3';
     else bg = '#fff2cc';
-    sh.getRange(start + i, 1, 1, 5).setBackground(bg);
+    sh.getRange(start + i, 1, 1, 6).setBackground(bg);
+    if (late.indexOf('LATE') === 0) sh.getRange(start + i, 5).setFontColor('#cc0000').setFontWeight('bold');
   }
 }
 

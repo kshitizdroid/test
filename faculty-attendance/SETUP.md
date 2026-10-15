@@ -2,8 +2,14 @@
 
 QR-based attendance on Google Forms + Sheets. Faculty scan one QR, **tap their
 name** (shown as options, not a dropdown), tap **Check-in** or **Check-out**,
-submit. Date & time are captured automatically. No shifts, no late rules — it
-just records check-in / check-out for everyone.
+submit. Date & time are captured automatically.
+
+**Late detection runs inside the Sheet — it is never shown on the form.** The
+session (Morning/Evening) is inferred from the check-in time (before 2:30 PM =
+Morning, after = Evening), then the rule is applied: Prajjwal Gupta late after
+4:25 PM (Evening); Mohit Pal late after 11:35 AM (Morning) and 4:25 PM (Evening);
+Aakanksha and Ajeet Sir are flexible and never flagged. Late shows up in the
+Daily Dashboard **Late?** column and the Monthly Report **Late Count**.
 
 Faculty: Prajjwal Gupta (Maths), Mohit Pal (Physics), Aakanksha (Biology),
 Ajeet Sir (English). Week = Mon–Sat, Sunday off.

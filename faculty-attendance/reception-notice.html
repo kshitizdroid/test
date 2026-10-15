@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinak Institute — Attendance Notice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Libre+Franklin:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: a single A4 attendance poster — oversized QR centred, three numbered steps,
+     reminders rail at the foot. Deliberately light (it prints on white paper). */
+  :root {
+    --paper: #faf8f3;
+    --ink: #1c2434;
+    --muted: #5a6477;
+    --navy: #1f3a5f;
+    --gold: #b8892b;
+    --line: #d9d3c6;
+    --card: #ffffff;
+    color-scheme: light;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --body: "Libre Franklin", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    line-height: 1.5;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  /* ---- On-screen controls (never printed) ---- */
+  .controls {
+    width: 100%;
+    max-width: 760px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 3px rgba(28,36,52,.08);
+  }
+  .controls h2 {
+    font-family: var(--body);
+    font-size: .8rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .controls label { font-weight: 600; font-size: .95rem; display: block; margin-bottom: 6px; }
+  .controls input {
+    width: 100%;
+    font-family: var(--body);
+    font-size: 1rem;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink);
+  }
+  .controls input:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+  .controls .hint { font-size: .88rem; color: var(--muted); margin: 10px 0 0; }
+  .controls .hint strong { color: var(--ink); }
+
+  /* ---- The printable poster ---- */
+  .poster {
+    width: 210mm;
+    max-width: 100%;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26mm 22mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10mm;
+  }
+  .eyebrow {
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    font-size: .95rem;
+    color: var(--navy);
+  }
+  .eyebrow .dot { color: var(--gold); }
+  h1 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    line-height: 1.05;
+    margin: 0;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  .lede {
+    font-size: 1.15rem;
+    color: var(--muted);
+    margin: 0;
+    max-width: 30ch;
+  }
+
+  /* QR */
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .qr-frame {
+    width: 62mm;
+    height: 62mm;
+    border: 2px solid var(--navy);
+    border-radius: 12px;
+    padding: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qr-frame img, .qr-frame canvas { width: 100% !important; height: 100% !important; }
+  .qr-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--muted); font-size: .9rem; padding: 10px; text-align: center;
+  }
+  .qr-placeholder .big { font-size: 2.4rem; line-height: 1; color: var(--line); }
+  .qr-caption { font-weight: 600; font-size: 1.05rem; color: var(--navy); }
+
+  /* Steps */
+  .steps { display: flex; gap: 8mm; width: 100%; justify-content: center; }
+  .step { flex: 1 1 0; max-width: 44mm; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .num {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--navy); color: #fff;
+    font-family: var(--display); font-weight: 600; font-size: 1.3rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step p { margin: 0; font-size: 1.02rem; }
+  .step strong { display: block; font-size: 1.08rem; }
+
+  /* Reminders */
+  .reminders {
+    width: 100%;
+    border-top: 1px solid var(--line);
+    padding-top: 7mm;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm 10mm;
+    text-align: left;
+  }
+  .reminders div { font-size: .98rem; color: var(--ink); }
+  .reminders .k {
+    display: block; font-weight: 700; color: var(--gold);
+    text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; margin-bottom: 2px;
+  }
+  .foot {
+    font-size: .9rem; color: var(--muted); border-top: 1px solid var(--line);
+    width: 100%; padding-top: 5mm; text-align: center;
+  }
+
+  @media (max-width: 480px) {
+    body { padding: 14px; }
+    .poster { padding: 20px 18px; gap: 22px; }
+    .steps { flex-direction: column; align-items: center; }
+    .step { max-width: 100%; }
+    .reminders { grid-template-columns: 1fr; }
+  }
+
+  /* ---- Print: just the poster, full A4, no chrome ---- */
+  @page { size: A4; margin: 10mm; }
+  @media print {
+    body { background: #fff; padding: 0; gap: 0; }
+    .controls { display: none !important; }
+    .poster {
+      width: 100%; border: none; border-radius: 0; box-shadow: none;
+      padding: 6mm 4mm;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <section class="controls" id="controls">
+    <h2>Before you print</h2>
+    <label for="link">Paste your Form (QR link)</label>
+    <input id="link" type="url" inputmode="url" placeholder="https://docs.google.com/forms/d/e/…/viewform"
+           autocomplete="off" spellcheck="false">
+    <p class="hint">The QR below updates as you type. Then press <strong>Ctrl&nbsp;+&nbsp;P</strong>
+      (Windows) or <strong>⌘&nbsp;+&nbsp;P</strong> (Mac) and print on A4 — this box won't appear on the paper.
+      No link handy? Leave it blank, print the sheet, and tape the QR image from your Drive into the box.</p>
+  </section>
+
+  <section class="poster" id="poster">
+    <p class="eyebrow">Pinak Institute <span class="dot">•</span> Faculty Attendance</p>
+    <h1>Scan to mark your attendance</h1>
+    <p class="lede">Use your own phone — no app and no login.</p>
+
+    <div class="qr-wrap">
+      <div class="qr-frame" id="qrFrame">
+        <div class="qr-placeholder" id="qrPlaceholder">
+          <span class="big">▢</span>
+          <span>QR code<br>goes here</span>
+        </div>
+      </div>
+      <p class="qr-caption">Point your phone camera at the code</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="num">1</span><p><strong>Tap your name</strong>from the list</p></div>
+      <div class="step"><span class="num">2</span><p><strong>Tap Check-in</strong>on arrival · <strong>Check-out</strong> when you leave</p></div>
+      <div class="step"><span class="num">3</span><p><strong>Tap Submit</strong>time is saved automatically</p></div>
+    </div>
+
+    <div class="reminders">
+      <div><span class="k">When</span>Monday to Saturday. Sunday off.</div>
+      <div><span class="k">Every visit</span>One Check-in in, one Check-out when leaving.</div>
+      <div><span class="k">Two sessions</span>Mohit Pal marks both — four taps a day (morning in/out, evening in/out).</div>
+      <div><span class="k">Trouble?</span>Tell reception the same day so it can be corrected.</div>
+    </div>
+
+    <p class="foot">Faculty: Prajjwal Gupta · Mohit Pal · Aakanksha · Ajeet Sir</p>
+  </section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  (function () {
+    var input = document.getElementById('link');
+    var frame = document.getElementById('qrFrame');
+    var placeholder = document.getElementById('qrPlaceholder');
+    var qr = null;
+
+    function render(url) {
+      url = (url || '').trim();
+      // Clear any previous QR canvas/img.
+      if (qr) { try { qr.clear(); } catch (e) {} }
+      frame.querySelectorAll('canvas, img').forEach(function (n) { n.remove(); });
+
+      if (!url) { placeholder.hidden = false; return; }
+      placeholder.hidden = true;
+      if (typeof QRCode === 'undefined') { placeholder.hidden = false; return; }
+      qr = new QRCode(frame, {
+        text: url,
+        width: 600,
+        height: 600,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    var KEY = 'pinak-form-link';
+    try {
+      var saved = localStorage.getItem(KEY);
+      if (saved) { input.value = saved; render(saved); }
+    } catch (e) {}
+
+    input.addEventListener('input', function () {
+      render(input.value);
+      try { localStorage.setItem(KEY, input.value.trim()); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
